@@ -7,7 +7,7 @@ const ENV = {
     LOG_LEVEL: 'debug',
   },
   production: {
-    API_BASE_URL: 'https://api.egwallet.example.com', // production API URL
+    API_BASE_URL: 'https://api.egwallet.com', // production API URL
     LOG_LEVEL: 'error',
   },
 };
@@ -16,3 +16,4 @@ const ENV = {
 const config = __DEV__ ? ENV.dev : ENV.production;
 
 export default config;
+

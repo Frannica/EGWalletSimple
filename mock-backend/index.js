@@ -143,6 +143,65 @@ app.post('/transactions', authMiddleware, (req, res) => {
   const db = loadDB();
   const { fromWalletId, toWalletId, amount, currency, memo } = req.body; // amount is expected in minor units (integer)
   if (!fromWalletId || !toWalletId || typeof amount === 'undefined' || !currency) return res.status(400).json({ error: 'missing fields' });
+  
+  const fromWallet = db.wallets.find(w => w.id === fromWalletId && w.userId === req.user.userId);
+  if (!fromWallet) return res.status(404).json({ error: 'Source wallet not found' });
+  const toWallet = db.wallets.find(w => w.id === toWalletId);
+  if (!toWallet) return res.status(404).json({ error: 'Destination wallet not found' });
+  
+  // find balance entries (amount stored in minor units)
+  const fromBalance = fromWallet.balances.find(b=>b.currency===currency) || { currency, amount: 0 };
+  if (fromBalance.amount < amount) return res.status(400).json({ error: 'Insufficient funds' });
+  
+  const rates = db.rates.values;
+  const amountMajor = minorToMajor(amount, currency);
+  const toAmountInUSD = amountMajor / (rates[currency] || 1);
+  
+  // CHECK #1: Daily sending limit ($5,000 USD per 24 hours)
+  const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+  const recentTxs = db.transactions.filter(t => t.fromWalletId === fromWalletId && t.timestamp > oneDayAgo && t.status === 'completed');
+  const dailySentUSD = recentTxs.reduce((sum, t) => {
+    const txMajor = minorToMajor(t.amount, t.currency);
+    const txUSD = txMajor / (rates[t.currency] || 1);
+    return sum + txUSD;
+  }, 0);
+  
+  const newDailyTotal = dailySentUSD + toAmountInUSD;
+  const DAILY_SEND_LIMIT_USD = 5000;
+  if (newDailyTotal > DAILY_SEND_LIMIT_USD) {
+    return res.status(400).json({ 
+      error: `Daily sending limit exceeded. You have sent ${dailySentUSD.toFixed(2)} USD today. Limit is ${DAILY_SEND_LIMIT_USD} USD per 24 hours.`,
+      dailySent: dailySentUSD,
+      dailyLimit: DAILY_SEND_LIMIT_USD
+    });
+  }
+  
+  // CHECK #2: Max wallet capacity ($250,000 USD) for destination
+  const destTotalUSD = toWallet.balances.reduce((s,b)=>{
+    const bMajor = minorToMajor(b.amount, b.currency);
+    return s + (bMajor / (rates[b.currency] || 1));
+  },0) + toAmountInUSD;
+  
+  const MAX_WALLET_CAPACITY_USD = toWallet.maxLimitUSD || 250000;
+  if (destTotalUSD > MAX_WALLET_CAPACITY_USD) {
+    return res.status(400).json({ 
+      error: `Destination wallet would exceed maximum capacity of ${MAX_WALLET_CAPACITY_USD.toLocaleString()} USD`,
+      destinationTotal: destTotalUSD,
+      maxCapacity: MAX_WALLET_CAPACITY_USD
+    });
+  }
+  
+  // apply transfer (minor units)
+  fromBalance.amount -= amount;
+  const destBalance = toWallet.balances.find(b=>b.currency===currency);
+  if (destBalance) destBalance.amount += amount; else toWallet.balances.push({ currency, amount });
+  
+  const tx = { id: uuidv4(), fromWalletId, toWalletId, amount, currency, memo: memo||'', status: 'completed', timestamp: Date.now() };
+  db.transactions.push(tx);
+  saveDB(db);
+
+  res.json({ transaction: tx });
+});
 
   const fromWallet = db.wallets.find(w => w.id === fromWalletId && w.userId === req.user.userId);
   if (!fromWallet) return res.status(404).json({ error: 'Source wallet not found' });
@@ -192,3 +251,4 @@ app.get('/me', authMiddleware, (req, res) => {
 app.listen(PORT, () => {
   console.log(`EGWallet mock backend running on http://localhost:${PORT}`);
 });
+

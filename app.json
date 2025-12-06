@@ -13,17 +13,31 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.egwallet.simple"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.egwallet.simple"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "androidStatusBar": {
+      "barStyle": "dark-content"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "16aa669e-bf87-4a8b-b24b-6b1c79dcc0f7"
+      }
+    },
+    "owner": "francisco1953"
   }
 }
